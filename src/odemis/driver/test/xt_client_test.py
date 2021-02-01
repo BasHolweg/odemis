@@ -59,10 +59,11 @@ CONFIG_STAGE = {"name": "stage", "role": "stage",
 CONFIG_FOCUS = {"name": "focuser", "role": "ebeam-focus"}
 CONFIG_DETECTOR = {"name": "detector", "role": "se-detector"}
 CONFIG_CHAMBER = {"name": "Chamber", "role": "chamber"}
-CONFIG_SEM = {"name": "sem", "role": "sem", "address": "PYRO:Microscope@192.168.31.162:4242",
+# CONFIG_SEM = {"name": "sem", "role": "sem", "address": "PYRO:Microscope@192.168.31.162:4242",
+CONFIG_SEM = {"name": "sem", "role": "sem", "address": "PYRO:Microscope@192.168.10.2:4242",
               "children": {"scanner": CONFIG_SCANNER,
                            "focus": CONFIG_FOCUS,
-                           "stage": CONFIG_STAGE,
+                           # "stage": CONFIG_STAGE,
                            "detector": CONFIG_DETECTOR,
                            "chamber": CONFIG_CHAMBER,
                            }
