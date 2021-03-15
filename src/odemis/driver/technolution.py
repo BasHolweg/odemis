@@ -1267,8 +1267,12 @@ class MPPC(model.Detector):
                         #  scan the first image twice. Note: scan_field is a blocking call - it waits until the scan is
                         #  finished.
                         if field_data.position_x == 0 and field_data.position_y == 0:
+                            # field_data.position_x = 2000*8*800
+                            # field_data.position_y = 2000*8*800
                             logging.debug("Rescanning first field to workaround hardware limitations.")
                             self.parent.asmApiPostCall("/scan/scan_field", 204, field_data.to_dict())
+                            # field_data.position_x = 0
+                            # field_data.position_y = 0
 
                         self.parent.asmApiPostCall("/scan/scan_field", 204, field_data.to_dict())
 
