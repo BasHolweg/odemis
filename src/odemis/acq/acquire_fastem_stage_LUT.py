@@ -28,7 +28,7 @@ from odemis.acq.align.spot import FindGridSpots
 from odemis.util.driver import get_backend_status, BACKEND_RUNNING
 
 std_dark_gain = False
-MEAN_SPOT = (725, 417)  # in pixels on DC; (725 * 3.45, 417 * 3.45) um with 3.45um = pixelsize of DC
+MEAN_SPOT = (763, -52)   # in pixels on DC; (725 * 3.45, 417 * 3.45) um with 3.45um = pixelsize of DC
 
 
 def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
@@ -48,8 +48,8 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
     good_offset_x = 0.032043  # a.u.
     good_offset_y = 0.053406
     # bad values for debug:
-    offset_x = 0.02043
-    offset_y = 0.033406
+    offset_x = -0.013
+    offset_y = -0.119
     print("inital descan offset x: {}; inital descan offset y: {}".format(offset_x, offset_y))
 
     descanner.scanOffset.value = (offset_x, offset_y)
