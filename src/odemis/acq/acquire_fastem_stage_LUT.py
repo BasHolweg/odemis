@@ -28,28 +28,20 @@ from odemis.acq.align.spot import FindGridSpots
 from odemis.util.driver import get_backend_status, BACKEND_RUNNING
 
 std_dark_gain = False
-MEAN_SPOT = (776, 568)  # in pixels on DC; (725 * 3.45, 417 * 3.45) um with 3.45um = pixelsize of DC
+MEAN_SPOT = (776, 568)   # in pixels on DC; (725 * 3.45, 417 * 3.45) um with 3.45um = pixelsize of DC
 
-
+begin_time = datetime. now()
 def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
 
     # routine to align the spot grid with the MPPC using the mapping of the MPPC to diagnostic camera
 
     # mppc.cellTranslation.value = tuple(tuple((0, 0) for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
-    # mppc.cellDarkOffset.value = tuple(tuple(2**15 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
+    # mppc.cellDarkOffset.value = tuple(tuple(0 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
     # mppc.cellDigitalGain.value = tuple(tuple(1 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
 
-    # setting of the scanner
+    # setting of the scanner 3-nov-2021
     multibeam.scanOffset.value = (-0.0935 / 1, 0.0935 / 1)
     multibeam.scanGain.value = (0.0935 / 1, -0.0935 / 1)
-
-    # setting of the descanner
-    # good offset positions
-    good_offset_x = 0.032043  # a.u.
-    good_offset_y = 0.053406
-    # bad values for debug:
-    # offset_x = 0.02043
-    # offset_y = 0.033406
 
     offset_x = 0.0213
     offset_y = -0.0671
@@ -58,7 +50,7 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
     descanner.scanOffset.value = (offset_x, offset_y)
     descanner.scanGain.value = (offset_x + 0.0082, offset_y - 0.0082)
 
-    mppc.filename.value = time.strftime("testing_megafield_id-%Y-%m-%d-%H-%M-%S")
+    mppc.filename.value = time.strftime("%Y-%m-%d-%H-%M-%S-pre-align-acq")
     multibeam.dwellTime.value = 2e-6
 
     # create folder to store calibration images
@@ -120,7 +112,6 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
     descanner.scanOffset.value = (offset_x, offset_y)
     descanner.scanGain.value = (offset_x + 0.0082 / 1, offset_y - 0.0082 / 1)
 
-    print("expected descan offset x: {}; calibrated descan offset y: {}".format(good_offset_x, good_offset_y))
     print("calibrated descan offset x: {}; calibrated descan offset y: {}".format(offset_x, offset_y))
 
     # upload the calculated offsets to the ASM
@@ -146,11 +137,13 @@ def correct_stage_magnetic_field(ccd, beamshift):
     shift = numpy.mean(spot_coordinates, axis=0) - MEAN_SPOT
     # Compensate for shift with dc beam shift
     # convert shift from pixels to um
-    shift_um = shift * 3.45e-6 / 40  # pixelsize ueye cam and 40x magnification
+    shift_um = shift * 3.45e-6 / 39.2  # pixelsize ueye cam and 40x magnification
     print("beam shift adjustment required due to stage magnetic field (um): {}".format(shift_um))
     cur_beam_shift_pos = numpy.array(beamshift.shift.value)
     print("current beam shift um: {}".format(beamshift.shift.value))
-    beamshift.shift.value = (shift_um + cur_beam_shift_pos)
+    # beamshift.shift.value = (shift_um + cur_beam_shift_pos)
+    beamshift.shift.value = (cur_beam_shift_pos+shift_um/1.72) #with 1.72 wich is the amplitude error factor and
+    time.sleep(2)
     print("new beam shift um: {}".format(beamshift.shift.value))
 
 
@@ -216,10 +209,10 @@ def settings_megafield(multibeam, descanner, mppc, dwell_time):
     # adjust settings for megafield image acquisition
 
     multibeam.dwellTime.value = dwell_time
-    mppc.overVoltage.value = 1.5
+    mppc.overVoltage.value = 1.8
     multibeam.scanDelay.value = (0e-5, 0.0)
     mppc.acqDelay.value = 0.00  # acqDelay >= scanner.scanDelay
-    descanner.physicalFlybackTime = 250e-4  # hardcoded
+    descanner.physicalFlybackTime = 0e-4  # hardcoded
     mppc.cellCompleteResolution.value = (900, 900)
     multibeam.resolution.value = (800*8, 800*8)  # change to (900*8, 900*8) for FIELD CORRECTIONS
 
@@ -249,16 +242,8 @@ def settings_megafield(multibeam, descanner, mppc, dwell_time):
     # debug
     # mppc.cellTranslation.value = tuple(tuple((0, 0) for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
 
-    # current overscan parameters
-    # mppc.cellTranslation.value = (((0, 0), (4, 2), (13, 11), (17, 16), (21, 23), (26, 28), (33, 33), (40, 39)),
-    #                               ((7, 0), (11, 5), (19, 12), (27, 21), (30, 26), (34, 31), (42, 36), (50, 44)),
-    #                               ((14, 4), (19, 10), (26, 16), (36, 21), (36, 26), (43, 35), (52, 40), (60, 47)),
-    #                               ((17, 6), (20, 12), (32, 16), (39, 26), (44, 31), (47, 36), (61, 45), (70, 52)),
-    #                               ((28, 7), (30, 15), (37, 20), (54, 26), (54, 31), (57, 37), (64, 42), (70, 41)),
-    #                               ((40, 5), (41, 13), (46, 19), (54, 24), (64, 30), (67, 32), (72, 36), (79, 41)),
-    #                               ((50, 1), (50, 10), (54, 17), (61, 23), (76, 27), (76, 33), (78, 36), (86, 38)),
-    #                               ((65, 1), (62, 13), (63, 20), (69, 23), (80, 30), (83, 33), (87, 35), (92, 38)))
-    # mppc.cellTranslation.value = (((17, 30), (17, 26), (17, 25), (17, 25), (17, 25), (17, 28), (19, 14), (19, 15)), ((15, 18), (16, 22), (17, 19), (17, 19), (17, 19), (17, 21), (19, 14), (19, 14)), ((15, 15), (16, 18), (17, 15), (17, 13), (9, 10), (14, 15), (14, 15), (14, 15)), ((15, 6), (16, 16), (17, 15), (17, 7), (17, 7), (31, 7), (8, 15), (8, 15)), ((15, 6), (8, 7), (23, 3), (23, 3), (23, 1), (23, 1), (23, 0), (23, 0)), ((8, 8), (8, 6), (9, 6), (9, 2), (18, 0), (17, 0), (17, 0), (20, 0)), ((8, 9), (8, 9), (9, 6), (9, 2), (9, 0), (9, 0), (9, 0), (9, 0)), ((8, 7), (8, 6), (7, 6), (2, 2), (3, 0), (2, 0), (0, 0), (0, 0)))
+    # current overscan parameters 10-nov-2021
+    mppc.cellTranslation.value =  (((17, 0), (14, 10), (13, 19), (13, 28), (2, 32), (1, 38), (0, 43), (0, 46)), ((25, 0), (21, 10), (21, 22), (21, 31), (11, 36), (5, 41), (5, 47), (5, 51)), ((31, 2), (27, 12), (26, 23), (28, 36), (20, 36), (14, 43), (12, 51), (12, 56)), ((37, 0), (36, 12), (35, 23), (33, 32), (33, 38), (20, 46), (18, 55), (18, 61)), ((51, 4), (44, 14), (42, 23), (40, 32), (40, 39), (27, 50), (26, 58), (26, 63)), ((57, 4), (54, 14), (51, 23), (48, 32), (48, 40), (37, 50), (33, 56), (32, 63)), ((67, 3), (62, 13), (59, 23), (56, 33), (56, 40), (48, 47), (43, 56), (42, 63)), ((76, 3), (70, 13), (65, 23), (57, 27), (57, 37), (57, 47), (51, 57), (50, 64)))
 
 
 # def acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, mm, field_images, dwell_time):
@@ -295,7 +280,7 @@ def acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, field_i
     start_pos = stage.position.value
 
     mppc.dataContent.value = "empty"
-    mppc.filename.value = time.strftime("testing_megafield_id-%Y-%m-%d-%H-%M-%S")
+    mppc.filename.value = time.strftime("%Y-%m-%d-%H-%M-%S-acq-script")
     dataflow = mppc.data
 
     # start recording data
@@ -304,9 +289,7 @@ def acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, field_i
     for row in range(field_images[1]):  # y axis, move stage on y,
         for col in range(field_images[0]):  # x axis, move stage on x
 
-            # Correct for paramagnetic field of the stage using the beam shift.
-            if col > 0 or row > 0:  # skip the first image as not needed for it
-                correct_stage_magnetic_field(ccd, beamshift)
+
 
             # Note: move the stage by absolute position based on first field image position -> calculate next stage
             # position (to avoid accumulation of relative stage movement errors)
@@ -321,6 +304,10 @@ def acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, field_i
                 # correct stage position
                 # correct_stage_pos(stage, mm, beamshift, row, col, x_stage_pos, y_stage_pos,
                 # x_stage_pos_rot, y_stage_pos_rot)
+
+            # Correct for paramagnetic field of the stage using the beam shift.
+            if col > 0 or row > 0:  # skip the first image as not needed for it
+                correct_stage_magnetic_field(ccd, beamshift)
 
             print("Acquire field image with col (x): {} and row (y): {} at stage position: {}"
                   .format(col, row, stage.position.value))
@@ -346,6 +333,9 @@ def acquire_megafield(ccd, stage, multibeam, descanner, mppc, beamshift, field_i
 
 
 image_received = threading.Event()
+
+
+
 
 
 def on_field_image(df, da):
@@ -394,7 +384,7 @@ def main(args):
 
     # adjust megafield size
     field_images = (1, 1)   # (x, y) Note: x (horizontal) = col, y (vertical) = row
-    dwell_time = 10e-6
+    dwell_time = 20e-6
     # external storage: <row>_<col>_<zl>.tiff
     # debugging: (1,3): expect 3 images in y direction (rows), files 0_0_, 1_0_, 2_0_
     # debugging: (2,3): expect 3 images in y direction (rows), 2 images in x dir (columns) files 0_0_, 1_0_, 2_0_, 0_1_, 1_1_, 2_1_
@@ -416,7 +406,8 @@ def main(args):
         scanner.blanker.value = True  # blank the beam
 
     print("Done")
-
+    end_time = datetime.now()
+    print(end_time-begin_time)
 
 if __name__ == '__main__':
     ret = main(sys.argv)
