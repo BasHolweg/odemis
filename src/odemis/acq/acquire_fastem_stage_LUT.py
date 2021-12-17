@@ -40,8 +40,9 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
     # mppc.cellDigitalGain.value = tuple(tuple(1 for i in range(0, mppc.shape[0])) for i in range(0, mppc.shape[1]))
 
     # setting of the scanner 3-nov-2021
-    multibeam.scanOffset.value = (-0.09868438814199386, +0.09789915171745937)
-    multibeam.scanGain.value = (0.09868438814199386, -0.09789915171745937)
+    max_overscan = float(numpy.max(mppc.cellTranslation.value))
+    multibeam.scanOffset.value = (-0.09959151868392672*((800+max_overscan)/900), +0.09886889441321561*((800+max_overscan)/900))
+    multibeam.scanGain.value = (0.09959151868392672*((800+max_overscan)/900), -0.09886889441321561*((800+max_overscan)/900))
 
     # setting of the descanner
     # good offset positions
@@ -113,7 +114,7 @@ def mppc2mp(ccd, multibeam, descanner, mppc, dataflow):
     offset_x = offset_x + shift_descan[0] * 0.000196022
     offset_y = offset_y + shift_descan[1] * 0.000196022
     descanner.scanOffset.value = (offset_x, offset_y)
-    descanner.scanGain.value = (offset_x + 0.0083 / 1 , offset_y - 0.0083 / 1 )
+    descanner.scanGain.value = (offset_x + (0.0083 * (800+max_overscan)/900), offset_y - (0.0083 * (800+max_overscan)/900))
 
     # print("expected descan offset x: {}; calibrated descan offset y: {}".format(good_offset_x, good_offset_y))
     print("calibrated descan offset x: {}; calibrated descan offset y: {}".format(offset_x, offset_y))
@@ -213,13 +214,14 @@ def correct_stage_pos(stage, mm, beamshift, row, col , x_stage_pos, y_stage_pos,
 def settings_megafield(multibeam, descanner, mppc, dwell_time):
 
     # adjust settings for megafield image acquisition
-
+    max_overscan = 800+(numpy.max(mppc.cellTranslation.value))
     multibeam.dwellTime.value = dwell_time
-    mppc.overVoltage.value = 1.8
+    max_overscan =max_overscan.tolist()
+    mppc.overVoltage.value = 1.5
     multibeam.scanDelay.value = (00.0, 0.0)
     mppc.acqDelay.value = 0.0 # acqDelay >= scanner.scanDelay
     descanner.physicalFlybackTime.value = 250e-06  # has a minimum value of 10us in steps in 10us
-    mppc.cellCompleteResolution.value = (900, 900)
+    mppc.cellCompleteResolution.value = (max_overscan, max_overscan)
     multibeam.resolution.value = (800*8, 800*8)  # change to (900*8, 900*8) for FIELD CORRECTIONS
 
     if std_dark_gain:
@@ -391,8 +393,8 @@ def main(args):
     beamshift.shift.value = (0, 0)
 
     # adjust megafield size
-    field_images = (1,1)   # (x, y) Note: x (horizontal) = col, y (vertical) = row
-    dwell_time = 5e-6
+    field_images = (2,2)   # (x, y) Note: x (horizontal) = col, y (vertical) = row
+    dwell_time = 20e-6
     # external storage: <row>_<col>_<zl>.tiff
     # debugging: (1,3): expect 3 images in y direction (rows), files 0_0_, 1_0_, 2_0_
     # debugging: (2,3): expect 3 images in y direction (rows), 2 images in x dir (columns) files 0_0_, 1_0_, 2_0_, 0_1_, 1_1_, 2_1_
