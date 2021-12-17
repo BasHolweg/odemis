@@ -40,7 +40,7 @@ SCANNER_CONFIG = {
     OVERVIEW_MODE: {
         "multiBeamMode": False,
         "external": False,  # fullframe mode; controlled by SEM itself
-        "blanker": None,  # automatic: unblanked when acquiring; blanked when not acquiring
+        "blanker": False,  # automatic: unblanked when acquiring; blanked when not acquiring
         "immersion": False,  # disable to get a larger field of view
         "horizontalFoV": 1.5e-3,
         "resolution": (1024, 884),  # px
@@ -48,7 +48,7 @@ SCANNER_CONFIG = {
     LIVESTREAM_MODE: {
         "multiBeamMode": False,
         "external": False,  # fullframe mode; controlled by SEM itself
-        "blanker": None,  # automatic: unblanked when acquiring; blanked when not acquiring
+        "blanker": False,  # automatic: unblanked when acquiring; blanked when not acquiring
         "immersion": True,
     },
     MEGAFIELD_MODE: {
