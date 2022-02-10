@@ -290,10 +290,10 @@ class AcquisitionTask(object):
         :returns:
             megafield: (list of DataArrays) A list of the raw image data. Each data array (entire field, thumbnail,
                 or zero array) represents one single field image within the roa (megafield).
-            exception: (Exception or None) Exception raised during the acquisition. If some single field image data has
-                already been acquired, exceptions are not raised, but returned.
+            (None) If megafield was successfully acquired return None.
         :raise:
-            Exception: If it failed before any single field images were acquired or if acquisition was cancelled.
+            Exception: If the megafield acquisition failed.
+            CancelledError: If the megafield acquisition was cancelled.
         """
         # Update the position of the first tile.
         self._pos_first_tile = self.get_pos_first_tile()
@@ -307,8 +307,6 @@ class AcquisitionTask(object):
 
         # set the sub-directories (<acquisition date>/<project name>) and megafield id
         self._detector.filename.value = os.path.join(self._path, self._roa.name.value)
-
-        exception = None
 
         # Get the estimated time for the roa.
         total_roa_time = self._roa.estimate_acquisition_time()
@@ -334,13 +332,11 @@ class AcquisitionTask(object):
             raise
 
         except Exception as ex:
-            # Check if any field images have already been acquired; if not => just raise the exception.
-            if len(self._fields_remaining) == len(self._roa.field_indices):
-                raise
-            # If image data was already acquired, just log a warning.
-            logging.warning("Exception during roa acquisition (after some data has already been acquired).",
-                            exc_info=True)
-            exception = ex  # let the caller handle the exception
+            # If image data was already acquired, log an additional warning.
+            if not len(self._fields_remaining) == len(self._roa.field_indices):
+                logging.warning("Exception during roa acquisition (after some data has already been acquired).",
+                                exc_info=True)
+            raise ex
 
         finally:
             # Remove references to the megafield once the acquisition is finished/cancelled.
@@ -352,8 +348,6 @@ class AcquisitionTask(object):
             # Finish the megafield also if an exception was raised, in order to enable a new acquisition.
             logging.debug("Finish megafield acquisition.")
             dataflow.unsubscribe(self.image_received)
-
-        return self.megafield, exception
 
     def acquire_roa(self, dataflow):
         """
@@ -381,8 +375,6 @@ class AcquisitionTask(object):
             # mppc detector using the image translation pre-alignment.
             if field_idx != (0, 0):
                 self.correct_beam_shift()  # correct the shift of the beams caused by the parasitic magnetic field.
-
-            dataflow.next(field_idx)  # acquire the next field image.
 
             # Wait until single field image data has been received (image_received sets flag to True).
             if not self._data_received.wait(timeout):

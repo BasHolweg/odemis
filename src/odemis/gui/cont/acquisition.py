@@ -1592,7 +1592,8 @@ class FastEMAcquiController(object):
 
     def on_acquisition(self, evt):
         """
-        Start the acquisition (really)
+        Start the acquisition. TODO what about cancel?
+        :param evt: (GenButtonEvent) Button triggered.
         """
         self._main_data_model.is_acquiring.value = True
         self.btn_acquire.Enable(False)
@@ -1627,16 +1628,17 @@ class FastEMAcquiController(object):
 
     def on_cancel(self, evt):
         """
-        Called during acquisition when pressing the cancel button
+        Cancel the acquisition task.
+        Called during acquisition when pressing the cancel button.
+        :param evt: (GenButtonEvent) Button event.
         """
-        fastem._executor.cancel()
-        # all the rest will be handled by on_acquisition_done()
+        fastem._executor.cancel()  # all the rest will be handled by on_acquisition_done()
 
     @call_in_wx_main
     def on_acquisition_done(self, future):
         """
-        Callback called when the acquisition is finished (either successfully or
-        cancelled)
+        Called when the acquisition is finished (either successfully, cancelled or failed).
+        :param future: (ProgressiveFuture) Acquisition future object, which can be cancelled.
         """
         self.btn_cancel.Hide()
         self.btn_acquire.Enable()
@@ -1652,7 +1654,9 @@ class FastEMAcquiController(object):
         except CancelledError:
             self._reset_acquisition_gui()
             return
-        except Exception as exp:
+        except Exception as ex:
+            # FIXME never triggered as acq manager returns exception and does not raise
+            #  or raise in acq manager
             # leave the gauge, to give a hint on what went wrong.
             logging.exception("Acquisition failed")
             self._reset_acquisition_gui("Acquisition failed (see log panel).", level=logging.WARNING)
