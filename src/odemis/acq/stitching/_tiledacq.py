@@ -60,6 +60,18 @@ class FocusingMethod(Enum):
     # Acquisition is done at several zlevels, and they are merged to obtain a focused image
     MAX_INTENSITY_PROJECTION = 3
 
+# FIXME
+# after every tile it updates the progress based on the original estimation
+# duration per tile fixed
+# so after each tile it removes this fixed time
+# so if estimate wrong, the update always wrong
+# beginning do estimation
+# then measure after the first tiles how much time passed
+# based on this info update time estimation for the tiles left
+# then more reliable
+# take move into account for stage (one per tile)
+# number of tiles always known in advance
+# in sparc: don't count the first acquisition (optional)
 
 class TiledAcquisitionTask(object):
     """
@@ -456,6 +468,8 @@ class TiledAcquisitionTask(object):
 
     STITCH_SPEED = 1e8  # px/s
 
+    # 2 functions: below is for beginning
+    # have second which calculates based on the number of acquired tiles, calculates the time for the remaining tiles
     def estimateTime(self, remaining=None):
         """
         Estimates duration for acquisition and stitching.
@@ -551,7 +565,7 @@ class TiledAcquisitionTask(object):
         Calls acquire function and blocks until the data is returned.
         :return DataArray: Acquired da for the current tile stream
         """
-        # Update the progress bar
+        # Update the progress bar after every tile: FIXME here call the new method
         self._future.set_progress(end=self.estimateTime((self._nx * self._ny) - i) + time.time())
         # Acquire data array for passed stream
         self._future.running_subf = acqmng.acquire([stream], self._settings_obs)
