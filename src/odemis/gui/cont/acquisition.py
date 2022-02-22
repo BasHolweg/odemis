@@ -39,7 +39,8 @@ from functools import partial
 from odemis import model, dataio
 from odemis.acq import align, acqmng, stream, fastem
 from odemis.acq.align import fastem as align_fastem
-from odemis.acq.align.fastem import OPTICAL_AUTOFOCUS, SCAN_ROTATION_PREALIGN, IMAGE_TRANSLATION_PREALIGN
+from odemis.acq.align.fastem import OPTICAL_AUTOFOCUS, SCAN_ROTATION_PREALIGN, IMAGE_TRANSLATION_PREALIGN, \
+    SCAN_AMPLITUDE_PREALIGN, DESCAN_GAIN_STATIC, IMAGE_ROTATION_PREALIGN, IMAGE_ROTATION_FINAL, IMAGE_TRANSLATION_FINAL
 from odemis.acq.align.spot import OBJECTIVE_MOVE
 from odemis.gui import conf, FG_COLOUR_BUTTON
 from odemis.acq.stream import UNDEFINED_ROI, ScannedTCSettingsStream, ScannedTemporalSettingsStream, \
@@ -2304,7 +2305,9 @@ class FastEMAlignmentController:
         #   The following two calibrations can also be run with the simulator.
         #   However, the rest not. How make compartible with both cases?
         # CALIBRATIONS_SIM and CALIBRATIONS as global var somehow?
-        self.calibrations = [OPTICAL_AUTOFOCUS, IMAGE_TRANSLATION_PREALIGN]
+        self.calibrations = [OPTICAL_AUTOFOCUS, SCAN_ROTATION_PREALIGN, SCAN_AMPLITUDE_PREALIGN,
+                             DESCAN_GAIN_STATIC, IMAGE_ROTATION_PREALIGN, IMAGE_TRANSLATION_PREALIGN,
+                             IMAGE_ROTATION_FINAL, IMAGE_TRANSLATION_FINAL]
 
         # check calibration state of system
         # If backend was not restarted, but only GUI, then the system is in principle still calibrated.

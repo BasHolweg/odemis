@@ -147,9 +147,6 @@ class CalibrationTask(object):
         # keep track if future was cancelled or not
         self._cancelled = False
 
-        # reset beamshift
-        self._beamshift.shift.value = (0, 0)
-
     def run(self):
         """
         Runs a set of calibration procedures.
@@ -169,6 +166,11 @@ class CalibrationTask(object):
 
         try:
             logging.debug("Starting calibration.")
+
+            if model.MD_CALIB not in self._beamshift.getMetadata().keys():
+                self._beamshift.updateMetadata({model.MD_CALIB: self._scanner.beamShiftTransformationMatrix.value})
+            # reset beamshift
+            self._beamshift.shift.value = (0, 0)
 
             logging.debug("Read initial Hw settings.")
             self.asm_config = get_config_asm(self._multibeam, self._descanner, self._detector)
@@ -217,39 +219,55 @@ class CalibrationTask(object):
         if calibration == OPTICAL_AUTOFOCUS:
             autofocus_multiprobe.run_autofocus(self._scanner, self._multibeam, self._descanner, self._detector,
                                                self._dataflow, self._ccd, self._stage)
+            configure_asm(self._multibeam, self._descanner, self._detector, self._dataflow, self.asm_config,
+                          upload=False)
 
         if calibration == SCAN_ROTATION_PREALIGN:
             scan_rotation_pre_align.run_scan_rotation_pre_align(self._scanner, self._multibeam, self._descanner,
                                                                 self._detector, self._dataflow, self._ccd)
+            configure_asm(self._multibeam, self._descanner, self._detector, self._dataflow, self.asm_config,
+                          upload=False)
 
         if calibration == SCAN_AMPLITUDE_PREALIGN:
             self.asm_config["multibeam"]["scanOffset"], self.asm_config["multibeam"]["scanAmplitude"] = \
                 scan_amplitude_pre_align.run_scan_amplitude_pre_align(self._scanner, self._multibeam, self._descanner,
                                                                       self._detector, self._dataflow, self._ccd)
+            configure_asm(self._multibeam, self._descanner, self._detector, self._dataflow, self.asm_config,
+                          upload=False)
 
         if calibration == DESCAN_GAIN_STATIC:
             descan_gain.run_descan_gain_static(self._scanner, self._multibeam, self._descanner,
                                                self._detector, self._dataflow, self._ccd)
+            configure_asm(self._multibeam, self._descanner, self._detector, self._dataflow, self.asm_config,
+                          upload=False)
 
         if calibration == IMAGE_ROTATION_PREALIGN:
             image_rotation_pre_align.run_image_rotation_pre_align(self._scanner, self._multibeam, self._descanner,
                                                                   self._detector, self._dataflow, self._ccd,
                                                                   self._det_rotator)
+            configure_asm(self._multibeam, self._descanner, self._detector, self._dataflow, self.asm_config,
+                          upload=False)
 
         if calibration == IMAGE_TRANSLATION_PREALIGN:
             self.asm_config["descanner"]["scanOffset"] = \
                 image_translation_pre_align.run_image_translation_pre_align(self._scanner, self._multibeam,
                                                                             self._descanner, self._detector,
                                                                             self._dataflow, self._ccd)
+            configure_asm(self._multibeam, self._descanner, self._detector, self._dataflow, self.asm_config,
+                          upload=False)
 
         if calibration == IMAGE_ROTATION_FINAL:
             image_rotation.run_image_rotation(self._scanner, self._multibeam, self._descanner,
                                               self._detector, self._dataflow, self._det_rotator)
+            configure_asm(self._multibeam, self._descanner, self._detector, self._dataflow, self.asm_config,
+                          upload=False)
 
         if calibration == IMAGE_TRANSLATION_FINAL:
             self.asm_config["descanner"]["scanOffset"] = \
                 image_translation.run_image_translation(self._scanner, self._multibeam, self._descanner,
                                                         self._detector, self._dataflow, self._ccd)
+            configure_asm(self._multibeam, self._descanner, self._detector, self._dataflow, self.asm_config,
+                          upload=False)
 
     def cancel(self, future):
         """
