@@ -37,7 +37,9 @@ try:
         descan_gain,
         image_rotation_pre_align,
         image_rotation,
-        image_translation
+        image_translation,
+        dark_offset_correction,
+        digital_gain_correction,
     )
     fastem_calibrations = True
 except ImportError:
@@ -53,6 +55,8 @@ IMAGE_ROTATION_PREALIGN = image_rotation_pre_align
 IMAGE_TRANSLATION_PREALIGN = image_translation_pre_align
 IMAGE_ROTATION_FINAL = image_rotation
 IMAGE_TRANSLATION_FINAL = image_translation
+DARK_OFFSET = dark_offset_correction
+DIGITAL_GAIN = digital_gain_correction
 
 # The executor is a single object, independent of how many times the module (fastem.py) is loaded.
 _executor = model.CancellableThreadPoolExecutor(max_workers=1)
@@ -266,6 +270,20 @@ class CalibrationTask(object):
             self.asm_config["descanner"]["scanOffset"] = \
                 image_translation.run_image_translation(self._scanner, self._multibeam, self._descanner,
                                                         self._detector, self._dataflow, self._ccd)
+            configure_asm(self._multibeam, self._descanner, self._detector, self._dataflow, self.asm_config,
+                          upload=False)
+
+        if calibration == DARK_OFFSET:
+            self.asm_config["mppc"]["cellDarkOffset"] = \
+                dark_offset_correction.run_dark_offset(self._scanner, self._multibeam, self._descanner,
+                                                        self._detector, self._dataflow)
+            configure_asm(self._multibeam, self._descanner, self._detector, self._dataflow, self.asm_config,
+                          upload=False)
+
+        if calibration == DIGITAL_GAIN:
+            self.asm_config["mppc"]["cellDigitalGain"] = \
+                digital_gain_correction.run_digital_gain(self._scanner, self._multibeam, self._descanner,
+                                                        self._detector, self._dataflow)
             configure_asm(self._multibeam, self._descanner, self._detector, self._dataflow, self.asm_config,
                           upload=False)
 
