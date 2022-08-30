@@ -85,6 +85,43 @@ SETTINGS_SELECTION = {
 }
 
 
+def flood_fill(array, start):
+    array = array.copy()
+    queue = [start]
+    while len(queue) > 0:
+        row, col = queue.pop(0)
+        if not array[row, col]:
+            array[row, col] = True
+            if not array[max(row - 1, 0), col]:
+                queue.append((max(row - 1, 0), col))
+            if not array[row, max(col - 1, 0)]:
+                queue.append((row, max(col - 1, 0)))
+            if not array[min(row + 1, array.shape[0] - 1), col]:
+                queue.append((min(row + 1, array.shape[0] - 1), col))
+            if not array[row, min(col + 1, array.shape[1] - 1)]:
+                queue.append((row, min(col + 1, array.shape[1] - 1)))
+
+    return array
+
+
+def get_bbox(polygon):  # Polygon is as list of tuples with coordinates: [(y1,x1), (y2,x2), ....., (yn,xn)]
+    xmin = polygon[0][1]
+    ymin = polygon[0][0]
+    xmax = polygon[1][1]
+    ymax = polygon[1][0]
+    for point in polygon:
+        xmin = point[1] if point[1] < xmin else xmin
+        ymin = point[0] if point[0] < ymin else ymin
+        xmax = point[1] if point[1] > xmax else xmax
+        ymax = point[0] if point[0] > ymax else ymax
+
+    return xmin, ymin, xmax, ymax
+
+
+def floor_to(n, multiple):
+    return int(multiple * math.floor(n / multiple))
+
+
 class FastEMROA(object):
     """
     Representation of a FastEM ROA (region of acquisition).
@@ -155,6 +192,15 @@ class FastEMROA(object):
         return tot_time
 
     def _calculate_field_indices(self):
+        polygon = self.coordinates.value    # A list of tuple coordinates in m
+        bbox = get_bbox(polygon)
+        bounding_megafield = self.get_square_field_indices(bbox)
+        # TODO: check whether polygon lies within a non rotated square field
+        # if so there is no need to get poly field indices as well since they will be the same.
+        indices = self.get_poly_field_indices(bounding_megafield, polygon)
+        return indices
+
+    def get_square_field_indices(self, bbox_coordinates):
         """
         Calculates the number of single field images needed to cover the ROA (region of acquisition). Determines the
         corresponding indices of the field images in a matrix covering the ROA. If the ROA cannot be covered
@@ -179,13 +225,13 @@ class FastEMROA(object):
         6000 = 6400 * (1 - overlap) = field_size * (1 - overlap)
         => n_fields = (abs(r - l) - field_size * overlap) / (field_size * (1 - overlap))
         """
-        l, t, r, b = self.coordinates.value  # tuple of floats: l, t, r, b coordinates in m
-        px_size = self._multibeam.pixelSize.value
-        field_res = self._multibeam.resolution.value
+        l, t, r, b = bbox_coordinates  # tuple of floats: l, t, r, b coordinates in m
+        px_size = self._multibeam.pixelSize.value   # Size per pixel in m
+        field_res = self._multibeam.resolution.value    # Number of pixels per field
 
         # The size of a field consists of the effective cell images excluding overscanned pixels.
         field_size = (field_res[0] * px_size[0],
-                      field_res[1] * px_size[1])
+                      field_res[1] * px_size[1])  # [px] * [m/px] = [m]
 
         # Note: Megafields get asymmetrically extended towards the right and bottom.
         # When fields overlap the number of fields is calculated by subtracting the size of the field that overlaps
@@ -216,6 +262,64 @@ class FastEMROA(object):
         field_indices = [f[::-1] for f in field_indices]
 
         return field_indices
+
+    def get_poly_field_indices(self, megafield, polygon):
+        indices = []
+        r_grid_width = field_size[1] - field_size[1] * overlap
+        c_grid_width = field_size[0] - field_size[0] * overlap
+        xmin, ymin, _, _ = get_bbox(polygon)
+        for i in range(len(polygon)):
+            point = polygon[i]
+            polygon[i] = (point[0] - ymin, point[1] - xmin)
+
+        for i in range(len(polygon)):
+            line = numpy.array((polygon[i], polygon[i - 1]))
+            p1 = line[0] if line[0][1] <= line[1][1] else line[1]
+            p2 = line[numpy.where(numpy.any(line != p1, axis=1))][0]
+            row1, row2 = p1[0], p2[0]
+            col1, col2 = p1[1], p2[1]
+
+            row_diff = row2 - row1
+            col_diff = col2 - col1
+
+            itr = abs(row_diff) if abs(row_diff) >= abs(col_diff) else abs(col_diff)
+            smallest_width = r_grid_width if r_grid_width <= c_grid_width else c_grid_width
+
+            rstep = smallest_width * (1 / 4) * row_diff / itr
+            cstep = smallest_width * (1 / 4) * col_diff / itr
+
+            row = row1
+            col = col1
+            line_descriptor = []
+            line_descriptor_simple = []
+            while col <= col2:
+                rf_simple = floor_to(row, r_grid_width)
+                cf_simple = floor_to(col, c_grid_width)
+                line_descriptor.append((row, col))
+                line_descriptor_simple.append((rf_simple, cf_simple))
+                row += rstep
+                col += cstep
+
+            indices.append(numpy.divide(line_descriptor_simple, field_size).astype('int').tolist())
+
+        megafield_grid_shape = (get_bbox(megafield)[-1], get_bbox(megafield)[-2])
+        megafield_grid_rep = numpy.zeros(megafield_grid_shape, dtype=numpy.bool)
+        flattened_indices = [bottom for middle in indices for bottom in middle]
+        _filtered_list = []
+
+        for i in flattened_indices:
+            if i not in _filtered_list:
+                _filtered_list.append(i)
+
+        flattened_indices = _filtered_list
+        megafield_grid_rep[[r[0] for r in flattened_indices], [c[1] for c in flattened_indices]] = True
+
+        inv_fill = flood_fill(megafield_grid_rep, (0, 0))  # TODO: add padding before fill
+        all_indices = ~inv_fill | megafield_grid_rep
+
+        # TODO: get np.where() from all_indices
+
+        return all_indices
 
 
 class FastEMROC(object):
