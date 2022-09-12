@@ -202,9 +202,9 @@ class TestFastEMROA(unittest.TestCase):
 
             self.assertAlmostEqual(estimated_roa_acq_time, roa_acq_time)
 
-    def test_calculate_field_indices(self):
+    def test_get_square_field_indices(self):
         """Check that the correct number and order of field indices is returned and that row and column are in the
-        correct order."""
+                correct order."""
         x_fields = 3
         y_fields = 2
         self.multibeam.resolution.value = (6400, 6400)  # don't change
@@ -228,6 +228,12 @@ class TestFastEMROA(unittest.TestCase):
         field_indices = roa._calculate_field_indices()
 
         self.assertListEqual(expected_indices, field_indices)
+
+    def test_get_poly_field_indices(self):
+        pass
+
+    def test_calculate_field_indices(self):
+        pass
 
     def test_calculate_field_indices_overlap(self):
         """Check that the correct number of field indices are calculated when there is overlap between the fields."""

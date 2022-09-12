@@ -27,6 +27,7 @@ import os
 import threading
 import time
 from concurrent.futures import CancelledError
+from typing import Tuple
 
 import numpy
 
@@ -85,30 +86,39 @@ SETTINGS_SELECTION = {
 }
 
 
-def flood_fill(array, start):
+def flood_fill(array: numpy.ndarray, start: Tuple[int, int]) -> numpy.ndarray:
+    """
+    Flood fills a numpy array from a given start position with the 4-connected method.
+    """
     array = array.copy()
     queue = [start]
     while len(queue) > 0:
-        row, col = queue.pop(0)
+        row, col = queue.pop(0)  # Set the current pixel to the first element of the queue and remove it from the queue
         if not array[row, col]:
-            array[row, col] = True
-            if not array[max(row - 1, 0), col]:
+            array[row, col] = True  # Fill current pixel
+            if not array[max(row - 1, 0), col]:  # Check north of pixel
                 queue.append((max(row - 1, 0), col))
-            if not array[row, max(col - 1, 0)]:
+            if not array[row, max(col - 1, 0)]:  # Check west of pixel
                 queue.append((row, max(col - 1, 0)))
-            if not array[min(row + 1, array.shape[0] - 1), col]:
+            if not array[min(row + 1, array.shape[0] - 1), col]:  # Check south of pixel
                 queue.append((min(row + 1, array.shape[0] - 1), col))
-            if not array[row, min(col + 1, array.shape[1] - 1)]:
+            if not array[row, min(col + 1, array.shape[1] - 1)]:  # Check east of pixel
                 queue.append((row, min(col + 1, array.shape[1] - 1)))
 
     return array
 
 
-def get_bbox(polygon):  # Polygon is as list of tuples with coordinates: [(y1,x1), (y2,x2), ....., (yn,xn)]
+def get_bbox(polygon: list):
+    """
+    Get the max and min values for x and y from a polygon.
+    The polygon is described as list of tuples with the coordinate values: [(y1,x1), (y2,x2), ....., (yn,xn)]
+    """
+    # Set the min max values as existing coordinates.
     xmin = polygon[0][1]
     ymin = polygon[0][0]
     xmax = polygon[1][1]
     ymax = polygon[1][0]
+    # Loop through the coordinates if any point is lower or higher than previous it becomes the new min or max.
     for point in polygon:
         xmin = point[1] if point[1] < xmin else xmin
         ymin = point[0] if point[0] < ymin else ymin
@@ -118,8 +128,25 @@ def get_bbox(polygon):  # Polygon is as list of tuples with coordinates: [(y1,x1
     return xmin, ymin, xmax, ymax
 
 
+def remove_duplicates(unfiltered_list: list):
+    """
+    Takes any shape list and returns it without duplicates.
+    """
+    filtered_list = []
+    for i in unfiltered_list:
+        if i not in filtered_list:
+            filtered_list.append(i)
+
+    return filtered_list
+
+
 def floor_to(n, multiple):
-    return int(multiple * math.floor(n / multiple))
+    """
+    Round any given value down to a given multiple.
+    exaple: n=50, multiple=15
+    returns: 45
+    """
+    return multiple * math.floor(n / multiple)
 
 
 class FastEMROA(object):
@@ -263,10 +290,24 @@ class FastEMROA(object):
 
         return field_indices
 
-    def get_poly_field_indices(self, megafield, polygon):
+    def get_poly_field_indices(self, polygon):
+        """
+        Determine the required indices of a bounding megafield for describing a polygonal ROA.
+
+        :return: (list of nested tuples (col, row)) The column and row field indices of the field images in the order
+                 they should be acquired.
+        """
         indices = []
-        r_grid_width = field_size[1] - field_size[1] * overlap
-        c_grid_width = field_size[0] - field_size[0] * overlap
+        px_size = self._multibeam.pixelSize.value  # Size per pixel in m
+        field_res = self._multibeam.resolution.value  # Number of pixels per field
+
+        # The size of a field consists of the effective cell images excluding overscanned pixels.
+        field_size = (field_res[0] * px_size[0],
+                      field_res[1] * px_size[1])  # [px] * [m/px] = [m]
+        r_grid_width = field_size[1] - field_size[1] * self.overlap
+        c_grid_width = field_size[0] - field_size[0] * self.overlap
+
+        # Shift the coordinate system to start at the minimum values of the bounding box.
         xmin, ymin, _, _ = get_bbox(polygon)
         for i in range(len(polygon)):
             point = polygon[i]
@@ -282,44 +323,51 @@ class FastEMROA(object):
             row_diff = row2 - row1
             col_diff = col2 - col1
 
-            itr = abs(row_diff) if abs(row_diff) >= abs(col_diff) else abs(col_diff)
+            largest_diff = abs(row_diff) if abs(row_diff) >= abs(col_diff) else abs(col_diff)
             smallest_width = r_grid_width if r_grid_width <= c_grid_width else c_grid_width
 
-            rstep = smallest_width * (1 / 4) * row_diff / itr
-            cstep = smallest_width * (1 / 4) * col_diff / itr
+            rstep = smallest_width * (1 / 4) * row_diff / largest_diff
+            cstep = smallest_width * (1 / 4) * col_diff / largest_diff
 
+            line_descriptor_simple = []
             row = row1
             col = col1
-            line_descriptor = []
-            line_descriptor_simple = []
             while col <= col2:
-                rf_simple = floor_to(row, r_grid_width)
-                cf_simple = floor_to(col, c_grid_width)
-                line_descriptor.append((row, col))
+                rf_simple = int(floor_to(row, r_grid_width))
+                cf_simple = int(floor_to(col, c_grid_width))
                 line_descriptor_simple.append((rf_simple, cf_simple))
                 row += rstep
                 col += cstep
 
+            # TODO check if this still works with asymetrical fields
             indices.append(numpy.divide(line_descriptor_simple, field_size).astype('int').tolist())
 
-        megafield_grid_shape = (get_bbox(megafield)[-1], get_bbox(megafield)[-2])
-        megafield_grid_rep = numpy.zeros(megafield_grid_shape, dtype=numpy.bool)
         flattened_indices = [bottom for middle in indices for bottom in middle]
-        _filtered_list = []
+        flattened_indices = remove_duplicates(flattened_indices)
 
-        for i in flattened_indices:
-            if i not in _filtered_list:
-                _filtered_list.append(i)
 
-        flattened_indices = _filtered_list
+        # megafield_grid_shape = (get_bbox(bbox_indices)[-1], get_bbox(bbox_indices)[-2])
+        # Get the bounding megafield shape by taking the maximum indices from polygonal indices list
+        megafield_grid_shape = (get_bbox(flattened_indices)[-2], get_bbox(flattened_indices)[-1])
+        # Create a boolian numpy array to represent the megafield with True values for at the indices that create
+        # the polygonal megafield
+        megafield_grid_rep = numpy.zeros(megafield_grid_shape, dtype=numpy.bool)
         megafield_grid_rep[[r[0] for r in flattened_indices], [c[1] for c in flattened_indices]] = True
 
-        inv_fill = flood_fill(megafield_grid_rep, (0, 0))  # TODO: add padding before fill
-        all_indices = ~inv_fill | megafield_grid_rep
+        # Pad the array with zeros so the flood fill wil always surround the entire shape
+        padding_size = 1
+        megafield_grid_rep = numpy.pad(megafield_grid_rep, padding_size, "constant", constant_values=False)
+        # Flood filling from the outside will create the inverse of the desired result
+        inv_fill = flood_fill(megafield_grid_rep, (0, 0))
+        # The correct indices are then the inverse of the inverted fill together with the already given line
+        indice_array = ~inv_fill | megafield_grid_rep
+        # Now remove the padding to get the correct shape
+        indice_array = indice_array[padding_size:-padding_size, padding_size:-padding_size]
 
-        # TODO: get np.where() from all_indices
+        rows, cols = numpy.where(indice_array)
+        indice_list = list(zip(cols, rows))
 
-        return all_indices
+        return indice_list
 
 
 class FastEMROC(object):
@@ -684,7 +732,7 @@ class AcquisitionTask(object):
 
         # Get the coordinate of the top left corner of the ROA, this corresponds to the (xmin, ymax) coordinate in the
         # role='stage' coordinate system.
-        xmin_roa, _, _, ymax_roa = self._roa.coordinates.value
+        xmin_roa, _, _, ymax_roa = self._roa.coordinates.value  # TODO: update with boundingbox instead of coordinates
 
         # The position of the stage when acquiring the top/left tile needs to be matching the center of that tile.
         # The stage coordinate system is pointing to the right in the x direction, and upwards in the y direction,
