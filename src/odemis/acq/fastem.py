@@ -108,18 +108,18 @@ def flood_fill(array: numpy.ndarray, start: Tuple[int, int]) -> numpy.ndarray:
     return array
 
 
-def get_bbox(polygon: list):
+def get_minmax(iterable: list):
     """
     Get the max and min values for x and y from a polygon.
     The polygon is described as list of tuples with the coordinate values: [(y1,x1), (y2,x2), ....., (yn,xn)]
     """
     # Set the min max values as existing coordinates.
-    xmin = polygon[0][1]
-    ymin = polygon[0][0]
-    xmax = polygon[1][1]
-    ymax = polygon[1][0]
+    xmin = iterable[0][1]
+    ymin = iterable[0][0]
+    xmax = iterable[1][1]
+    ymax = iterable[1][0]
     # Loop through the coordinates if any point is lower or higher than previous it becomes the new min or max.
-    for point in polygon:
+    for point in iterable:
         xmin = point[1] if point[1] < xmin else xmin
         ymin = point[0] if point[0] < ymin else ymin
         xmax = point[1] if point[1] > xmax else xmax
@@ -219,12 +219,18 @@ class FastEMROA(object):
         return tot_time
 
     def _calculate_field_indices(self):
-        polygon = self.coordinates.value    # A list of tuple coordinates in m
-        bbox = get_bbox(polygon)
-        bounding_megafield = self.get_square_field_indices(bbox)
+        l, t, r, b = self.coordinates.value  # A list of tuple coordinates in m
+        # self.coordinates.value is currently a set of 4 box values
+        # convert these to a polygon in order to test
+        # polygon = [(t, l), (t, r), (b, r), (b, l)]  # TODO: make it so coordinates.value is a polygon
+        polygon = [(t, r), (b, r), (b, l)]
         # TODO: check whether polygon lies within a non rotated square field
-        # if so there is no need to get poly field indices as well since they will be the same.
-        indices = self.get_poly_field_indices(bounding_megafield, polygon)
+        # if so get_square_field_indices is a faster way to get the square field indices.
+
+        if len(polygon) == 4:
+            pass
+
+        indices = self.get_poly_field_indices(polygon)
         return indices
 
     def get_square_field_indices(self, bbox_coordinates):
@@ -292,11 +298,36 @@ class FastEMROA(object):
 
     def get_poly_field_indices(self, polygon):
         """
-        Determine the required indices of a bounding megafield for describing a polygonal ROA.
+        Determine the required indices of the fields in a bounding megafield for describing a polygonal ROA.
 
         :return: (list of nested tuples (col, row)) The column and row field indices of the field images in the order
                  they should be acquired.
         """
+        # Shift the coordinate system to start at the minimum values of the bounding box
+        # so the indices start from this point.
+        xmin, ymin, _, _ = get_minmax(polygon)
+        for i in range(len(polygon)):
+            point = polygon[i]
+            polygon[i] = (point[0] - ymin, point[1] - xmin)
+
+        # Get the indices of the fields intersected by the polygon lines.
+        indices = self._get_intersected_field_indices(polygon)
+
+        # If only one index was found return that one.
+        if len(indices) == 1:
+            return [(indices[0][1], indices[0][0])]  # (col, row)
+
+        # Create a boolian numpy array to represent the megafield with True values for fields that need to be acquired
+        # and fill it so the inside of the polygon is also acquired.
+        index_array = self._create_and_fill_megafield_rep(indices)
+
+        # The indices that represent the polygon are where the index_array has True values
+        rows, cols = numpy.where(index_array)
+        index_list = list(zip(cols.tolist(), rows.tolist()))
+
+        return index_list
+
+    def _get_intersected_field_indices(self, polygon):
         indices = []
         px_size = self._multibeam.pixelSize.value  # Size per pixel in m
         field_res = self._multibeam.resolution.value  # Number of pixels per field
@@ -306,68 +337,78 @@ class FastEMROA(object):
                       field_res[1] * px_size[1])  # [px] * [m/px] = [m]
         r_grid_width = field_size[1] - field_size[1] * self.overlap
         c_grid_width = field_size[0] - field_size[0] * self.overlap
-
-        # Shift the coordinate system to start at the minimum values of the bounding box.
-        xmin, ymin, _, _ = get_bbox(polygon)
-        for i in range(len(polygon)):
-            point = polygon[i]
-            polygon[i] = (point[0] - ymin, point[1] - xmin)
-
         for i in range(len(polygon)):
             line = numpy.array((polygon[i], polygon[i - 1]))
-            p1 = line[0] if line[0][1] <= line[1][1] else line[1]
-            p2 = line[numpy.where(numpy.any(line != p1, axis=1))][0]
+            if line[0][1] <= line[1][1]:
+                p1, p2 = line
+            else:
+                p2, p1 = line
+
+            if numpy.all(p1 == p2):
+                # If the points that form the line are equal only return the indices of the field they are in,
+                # indices for a line with length zero cannot be determined.
+                r_simple = floor_to(p1[0], r_grid_width)
+                c_simple = floor_to(p1[1], c_grid_width)
+                intersected_index = (round(r_simple / r_grid_width), round(c_simple / c_grid_width))
+                if intersected_index not in indices:
+                    indices.append(intersected_index)
+                continue
+
             row1, row2 = p1[0], p2[0]
             col1, col2 = p1[1], p2[1]
 
             row_diff = row2 - row1
             col_diff = col2 - col1
 
-            largest_diff = abs(row_diff) if abs(row_diff) >= abs(col_diff) else abs(col_diff)
-            smallest_width = r_grid_width if r_grid_width <= c_grid_width else c_grid_width
+            largest_diff = max(abs(row_diff), abs(col_diff))
+            smallest_width = min(r_grid_width, c_grid_width)
 
+            # The method checks in what field index points along the line lie, this can result in "stepping over"
+            # a corner of a field. Check four times as many points to minimize this effect.
             rstep = smallest_width * (1 / 4) * row_diff / largest_diff
             cstep = smallest_width * (1 / 4) * col_diff / largest_diff
 
-            line_descriptor_simple = []
+            if largest_diff == abs(row_diff):
+                nsteps = math.ceil(largest_diff / abs(rstep))
+            else:
+                nsteps = math.ceil(largest_diff / abs(cstep))
+
             row = row1
             col = col1
-            while col <= col2:
-                rf_simple = int(floor_to(row, r_grid_width))
-                cf_simple = int(floor_to(col, c_grid_width))
-                line_descriptor_simple.append((rf_simple, cf_simple))
+            for n in range(nsteps):
+                r_simple = floor_to(row, r_grid_width)
+                c_simple = floor_to(col, c_grid_width)
+                # Round is used instead of int in case there is a previous floating point or rounding error.
+                intersected_index = (round(r_simple / r_grid_width), round(c_simple / c_grid_width))
+                if intersected_index not in indices:
+                    indices.append(intersected_index)
                 row += rstep
                 col += cstep
 
-            # TODO check if this still works with asymetrical fields
-            indices.append(numpy.divide(line_descriptor_simple, field_size).astype('int').tolist())
+        return indices
 
-        flattened_indices = [bottom for middle in indices for bottom in middle]
-        flattened_indices = remove_duplicates(flattened_indices)
-
-
-        # megafield_grid_shape = (get_bbox(bbox_indices)[-1], get_bbox(bbox_indices)[-2])
-        # Get the bounding megafield shape by taking the maximum indices from polygonal indices list
-        megafield_grid_shape = (get_bbox(flattened_indices)[-2], get_bbox(flattened_indices)[-1])
-        # Create a boolian numpy array to represent the megafield with True values for at the indices that create
-        # the polygonal megafield
+    @staticmethod
+    def _create_and_fill_megafield_rep(indices):
+        # Get the bounding megafield shape by taking the maximum indices from the indices list and create a boolian
+        # numpy array to represent the megafield with True values for fields that need to be acquired
+        megafield_grid_shape = (get_minmax(indices)[-1] + 1, get_minmax(indices)[-2] + 1)
         megafield_grid_rep = numpy.zeros(megafield_grid_shape, dtype=numpy.bool)
-        megafield_grid_rep[[r[0] for r in flattened_indices], [c[1] for c in flattened_indices]] = True
+        megafield_grid_rep[[r[0] for r in indices], [c[1] for c in indices]] = True
 
         # Pad the array with zeros so the flood fill wil always surround the entire shape
         padding_size = 1
         megafield_grid_rep = numpy.pad(megafield_grid_rep, padding_size, "constant", constant_values=False)
         # Flood filling from the outside will create the inverse of the desired result
-        inv_fill = flood_fill(megafield_grid_rep, (0, 0))
         # The correct indices are then the inverse of the inverted fill together with the already given line
+        inv_fill = flood_fill(megafield_grid_rep, (0, 0))
         indice_array = ~inv_fill | megafield_grid_rep
-        # Now remove the padding to get the correct shape
+
+        # Remove the padding to regain the correct shape
         indice_array = indice_array[padding_size:-padding_size, padding_size:-padding_size]
 
-        rows, cols = numpy.where(indice_array)
-        indice_list = list(zip(cols, rows))
+        # TODO: check if it has actually been filled
 
-        return indice_list
+        return indice_array
 
 
 class FastEMROC(object):

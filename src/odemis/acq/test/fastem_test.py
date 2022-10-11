@@ -221,14 +221,43 @@ class TestFastEMROA(unittest.TestCase):
                                self.descanner,
                                self.mppc)
 
-        expected_indices = [(0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1)]  # (col, row)
+        expected_indices = [(0, 0), (1, 0), (2, 0),
+                            (0, 1), (1, 1), (2, 1)]  # (col, row)
 
-        field_indices = roa._calculate_field_indices()
+        field_indices = roa.get_square_field_indices(coordinates)
 
         self.assertListEqual(expected_indices, field_indices)
 
     def test_get_poly_field_indices(self):
-        pass
+        x_fields = 5
+        y_fields = 4
+        self.multibeam.resolution.value = (6400, 6400)  # don't change
+        res_x, res_y = self.multibeam.resolution.value  # single field size
+        px_size_x, px_size_y = self.multibeam.pixelSize.value
+        xmax = res_x * px_size_x * x_fields
+        ymax = res_y * px_size_y * y_fields
+        coordinates = (0, 0, xmax, ymax)  # in m, don't change
+        polygon = [(0, 0), (ymax - px_size_y, xmax - px_size_x), (ymax - px_size_y, 0)]  # in m, don't change
+        roc_2 = fastem.FastEMROC("roc_2", coordinates)
+        roc_3 = fastem.FastEMROC("roc_3", coordinates)
+        roa_name = time.strftime("test_megafield_id-%Y-%m-%d-%H-%M-%S")
+        roa = fastem.FastEMROA(roa_name,
+                               coordinates,
+                               roc_2,
+                               roc_3,
+                               self.asm,
+                               self.multibeam,
+                               self.descanner,
+                               self.mppc)
+
+        expected_indices = [(0, 0), (1, 0),
+                            (0, 1), (1, 1), (2, 1),
+                            (0, 2), (1, 2), (2, 2), (3, 2),
+                            (0, 3), (1, 3), (2, 3), (3, 3), (4, 3), ]  # (col, row)
+
+        field_indices = roa.get_poly_field_indices(polygon)
+
+        self.assertListEqual(expected_indices, field_indices)
 
     def test_calculate_field_indices(self):
         pass
@@ -258,7 +287,7 @@ class TestFastEMROA(unittest.TestCase):
             # There are 3 fields of 8 '-' and the overlap is 2, therefore the total size is 3 * (8-2) + 2
             xmax, ymax = (field_size_x * x_fields * (1 - overlap) + field_size_x * overlap,
                           field_size_y * y_fields * (1 - overlap) + field_size_y * overlap)
-            coordinates = (xmin, ymin, xmax, ymax)  # in m
+            coordinates = (xmin, ymin, xmax - px_size_x, ymax - px_size_y)  # in m
             roa = fastem.FastEMROA(roa_name,
                                    coordinates,
                                    None,
