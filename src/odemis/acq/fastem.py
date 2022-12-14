@@ -114,9 +114,9 @@ class FastEMROA(object):
             to the neighboring field.
         """
         self.name = model.StringVA(name)
-        self.coordinates = model.TupleContinuous(coordinates,
-                                                 range=((-1, -1, -1, -1), (1, 1, 1, 1)),
-                                                 cls=(int, float),
+        self.coordinates = model.ListContinuous(coordinates,
+                                                #  range=((-1, -1, -1, -1), (1, 1, 1, 1)),
+                                                 cls=(tuple),
                                                  unit='m')
         self.roc_2 = model.VigilantAttribute(roc_2)
         self.roc_3 = model.VigilantAttribute(roc_3)
@@ -141,7 +141,7 @@ class FastEMROA(object):
                             Bounding box coordinates of the ROA in [m]. The coordinates are in the sample carrier
                             coordinate system, which corresponds to the component with role='stage'.
         """
-        self.field_indices = self._calculate_field_indices()
+        self.field_indices = self.get_poly_field_indices()
 
     def estimate_acquisition_time(self):
         """
@@ -224,7 +224,7 @@ class FastEMROA(object):
 
     # TODO: should not require input argument but use self.coordinates when the behaviour is adjusted to support
     #  multiple coordinate points instead of 4 separate values
-    def get_poly_field_indices(self, polygon):
+    def get_poly_field_indices(self):
         """
         Determine the required fields within a bounding megafield to describe a polygonal ROA and return the
         index values of these fields.
@@ -236,6 +236,7 @@ class FastEMROA(object):
         """
         # Shift the coordinate system to start at the minimum values of the bounding box
         # so the indices start from this point.
+        polygon = self.coordinates.value
         ymin, xmin, _, _ = util.get_polygon_bbox(polygon)
         for i, point in enumerate(polygon):
             polygon[i] = (point[0] - ymin, point[1] - xmin)
