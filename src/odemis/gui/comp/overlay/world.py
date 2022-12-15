@@ -686,12 +686,12 @@ class WorldPolygonOverlay(WorldOverlay, PolygonMixin):
                     ctx.move_to(*b_pos)
                 else:
                     ctx.line_to(*b_pos)
-
+            
             if self.finish:
                 ctx.close_path()
-
+            
             ctx.stroke()
-
+            
             # if self.finish:
             #     logging.debug("-------------------------------------------------")
             #     ctx.close_path()
@@ -705,7 +705,7 @@ class WorldPolygonOverlay(WorldOverlay, PolygonMixin):
                 b_current_pos = self.cnvs.phys_to_buffer(p_current_pos, offset)
                 ctx.move_to(*b_last_point)
                 ctx.line_to(*b_current_pos)
-
+            
                 # self.position_label.pos = b_last_point
                 # self.position_label.text = u"Try"
                 # self.position_label.colour = (1, 1, 1)  # label white
@@ -3568,7 +3568,7 @@ class FastEMPolygonOverlay(WorldPolygonOverlay):
         coordinates (tuple of 4 floats): left, top, right, bottom position in m
         """
         if coordinates != UNDEFINED_ROI:
-            self.set_physical_sel(coordinates)
+            # self.set_physical_sel(coordinates)
             wx.CallAfter(self.cnvs.request_drawing_update)
 
 class FastEMSelectOverlay(WorldSelectOverlay):
@@ -3750,7 +3750,7 @@ class FastEMROAOverlay(FastEMPolygonOverlay):
         self.cnvs.update_drawing()  # Line width changes in .draw when .active is changed
         self.cnvs.reset_default_cursor()
         # WorldOverlay.on_left_up(self, evt)
-
+    
     def on_right_up(self, evt):
         PolygonMixin._on_right_up(self, evt)
         self.cnvs.update_drawing()
@@ -3761,7 +3761,9 @@ class FastEMROAOverlay(FastEMPolygonOverlay):
         for point in self.points:
             offset = self.cnvs.get_half_buffer_size()
             p_point = self.cnvs.view_to_phys(point, offset)
-            p_points.append(p_point)
+            p_points.append(p_point[0])
+            p_points.append(p_point[1])
+            logging.debug("{} {}".format(p_point[0], p_point[1]))
         self._coordinates.value = p_points
         logging.debug("Coordinates: {}".format(p_points))
         self.cnvs.update_drawing()

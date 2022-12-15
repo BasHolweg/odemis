@@ -114,9 +114,9 @@ class FastEMROA(object):
             to the neighboring field.
         """
         self.name = model.StringVA(name)
-        self.coordinates = model.ListContinuous(coordinates,
-                                                #  range=((-1, -1, -1, -1), (1, 1, 1, 1)),
-                                                 cls=(tuple),
+        self.coordinates = model.ListContinuous([0.],
+                                                 range=((-1.0,), (1.0,)),
+                                                 cls=(float),
                                                  unit='m')
         self.roc_2 = model.VigilantAttribute(roc_2)
         self.roc_3 = model.VigilantAttribute(roc_3)
@@ -141,7 +141,14 @@ class FastEMROA(object):
                             Bounding box coordinates of the ROA in [m]. The coordinates are in the sample carrier
                             coordinate system, which corresponds to the component with role='stage'.
         """
-        self.field_indices = self.get_poly_field_indices()
+        if len(coordinates) >= 4:
+            logging.debug("Received coordinates: {}".format(coordinates))
+            poly = []
+            for i in range(len(coordinates)):
+                if i % 2 == 0:
+                    poly.append((coordinates[i], coordinates[i+1]))
+
+            self.field_indices = self.get_poly_field_indices(poly)
 
     def estimate_acquisition_time(self):
         """
@@ -156,8 +163,9 @@ class FastEMROA(object):
     def _calculate_field_indices(self):
         # TODO: Old method is used since polygonal fields is not yet supported by the gui. This must be adjusted when
         #  it is.
-        indices = self.get_square_field_indices(self.coordinates.value)
-        return indices
+        pass
+        # indices = self.get_square_field_indices(self.coordinates.value)
+        # return indices
 
     def get_square_field_indices(self, coordinates):
         """
@@ -224,7 +232,7 @@ class FastEMROA(object):
 
     # TODO: should not require input argument but use self.coordinates when the behaviour is adjusted to support
     #  multiple coordinate points instead of 4 separate values
-    def get_poly_field_indices(self):
+    def get_poly_field_indices(self, polygon):
         """
         Determine the required fields within a bounding megafield to describe a polygonal ROA and return the
         index values of these fields.
@@ -236,7 +244,7 @@ class FastEMROA(object):
         """
         # Shift the coordinate system to start at the minimum values of the bounding box
         # so the indices start from this point.
-        polygon = self.coordinates.value
+        # polygon = self.coordinates.value
         ymin, xmin, _, _ = util.get_polygon_bbox(polygon)
         for i, point in enumerate(polygon):
             polygon[i] = (point[0] - ymin, point[1] - xmin)
@@ -719,7 +727,13 @@ class AcquisitionTask(object):
 
         # Get the coordinate of the top left corner of the ROA, this corresponds to the (xmin, ymax) coordinate in the
         # role='stage' coordinate system.
-        xmin_roa, _, _, ymax_roa = self._roa.coordinates.value  # TODO: update with boundingbox instead of coordinates
+        coordinates = self._roa.coordinates.value
+        poly = []
+        for i in range(len(coordinates)):
+            if i % 2 == 0:
+                poly.append((coordinates[i], coordinates[i+1]))
+        _, xmin_roa, ymax_roa, _ = util.get_polygon_bbox(poly)
+        # xmin_roa, _, _, ymax_roa = self._roa.coordinates.value  # TODO: update with boundingbox instead of coordinates
 
         # The position of the stage when acquiring the top/left tile needs to be matching the center of that tile.
         # The stage coordinate system is pointing to the right in the x direction, and upwards in the y direction,
