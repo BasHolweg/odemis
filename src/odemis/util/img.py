@@ -1241,9 +1241,9 @@ def apply_flood_fill(input_array, start):
     while len(pixel_queue) > 0:
         # To prevent the possibility of an infinite loop count the number of iterations. If it is larger than the
         # total number of values in the array raise an error since this should not be possible.
-        if overflow_counter > max_area:
-            raise ValueError(f"Number of loop iterations is higher than maximum iterations possible ({max_area}) in "
-                             f"array of shape: {input_array.shape}")
+        # if overflow_counter > max_area + 1:
+        #     raise ValueError(f"Number of loop iterations is higher than maximum iterations possible ({max_area}) in "
+        #                      f"array of shape: {input_array.shape}")
         # Set the current pixel to the first element of the queue and remove it from the queue
         row, col = pixel_queue.pop(0)
         if not input_array[row, col]:

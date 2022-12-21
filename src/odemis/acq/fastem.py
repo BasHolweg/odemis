@@ -146,9 +146,10 @@ class FastEMROA(object):
             poly = []
             for i in range(len(coordinates)):
                 if i % 2 == 0:
-                    poly.append((coordinates[i], coordinates[i+1]))
+                    poly.append((coordinates[i + 1], coordinates[i]))
 
             self.field_indices = self.get_poly_field_indices(poly)
+            logging.debug(f"Getting indices: {self.field_indices}")
 
     def estimate_acquisition_time(self):
         """
@@ -259,7 +260,7 @@ class FastEMROA(object):
         # Create a boolean numpy array to represent the megafield with True values for fields that need to be acquired.
         # and fill it so the inside of the polygon is also acquired.
         index_array = self._create_and_fill_megafield_rep(indices)
-
+        index_array = numpy.flip(index_array, 0)
         # The indices that represent the polygon are where the index_array has True values.
         rows, cols = numpy.where(index_array)
 
@@ -629,8 +630,11 @@ class AcquisitionTask(object):
         # Use 5 times the total field time to have a wide margin.
         timeout = 5 * total_field_time + 2
 
+        logging.debug(f"Getting acq indices: {self._roa.field_indices}")
+
         # Acquire all single field images, which are automatically offloaded to the external storage.
         for field_idx in self._roa.field_indices:
+            logging.debug(f"Acquiring index: {field_idx}")
             # Reset the event that waits for the image being received (puts flag to false).
             self._data_received.clear()
             self.field_idx = field_idx
@@ -731,7 +735,7 @@ class AcquisitionTask(object):
         poly = []
         for i in range(len(coordinates)):
             if i % 2 == 0:
-                poly.append((coordinates[i], coordinates[i+1]))
+                poly.append((coordinates[i + 1], coordinates[i]))
         _, xmin_roa, ymax_roa, _ = util.get_polygon_bbox(poly)
         # xmin_roa, _, _, ymax_roa = self._roa.coordinates.value  # TODO: update with boundingbox instead of coordinates
 
